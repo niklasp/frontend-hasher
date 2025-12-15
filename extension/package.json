@@ -1,0 +1,18 @@
+{
+  "name": "page-resource-hash-logger-extension",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:content": "pnpm exec esbuild src/content/index.ts --bundle --format=iife --target=es2020 --outfile=dist/content.js",
+    "build:popup": "pnpm exec esbuild src/popup/index.ts --bundle --format=iife --target=es2020 --outfile=dist/popup.js",
+    "copy:html": "cp src/popup/popup.html dist/popup.html",
+    "build": "pnpm run build:content && pnpm run build:popup && pnpm run copy:html"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.32",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "packageManager": "pnpm@9.15.3+sha512.1f79bc245a66eb0b07c5d4d83131240774642caaa86ef7d0434ab47c0d16f66b04e21e0c086eb61e62c77efc4d7f7ec071afad3796af64892fae66509173893a"
+}

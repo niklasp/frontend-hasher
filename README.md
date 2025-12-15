@@ -22,7 +22,7 @@ Output goes to `dist/` (manifest.json, content.js, popup.js, popup.html).
 A Vite + React demo page is included in `../demo-page/` with edge cases for resource detection.
 
 ```bash
-cd ../demo-page
+cd demo-page
 pnpm install
 pnpm dev      # Dev server at http://localhost:5173
 pnpm build    # Production build

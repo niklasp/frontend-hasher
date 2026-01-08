@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "dependencies": {
+    "ipfs-unixfs-importer": "^16.0.1"
+  }
+}

@@ -1,13 +1,12 @@
-import type { PageManifest } from "../shared/types";
+import type {
+  VerificationState,
+  CollectedResource,
+} from "../verification/types";
 
 /** Private state - not directly exported */
 let _processedUrls: Set<string> = new Set();
-let _currentManifest: PageManifest | null = null;
-
-/** Get the set of already-processed URLs */
-export function getProcessedUrls(): Set<string> {
-  return _processedUrls;
-}
+let _verificationState: VerificationState | null = null;
+let _collectedResources: Map<string, CollectedResource> = new Map();
 
 /** Check if a URL has already been processed */
 export function isUrlProcessed(url: string): boolean {
@@ -19,23 +18,39 @@ export function markUrlProcessed(url: string): void {
   _processedUrls.add(url);
 }
 
-/** Get the current manifest */
-export function getCurrentManifest(): PageManifest | null {
-  return _currentManifest;
-}
-
-/** Set the current manifest */
-export function setCurrentManifest(manifest: PageManifest | null): void {
-  _currentManifest = manifest;
-}
-
 /** Clear the processed URLs set */
 export function clearProcessedUrls(): void {
   _processedUrls.clear();
 }
 
-/** Reset all state (useful for testing or full refresh) */
+/** Get the current verification state */
+export function getVerificationState(): VerificationState | null {
+  return _verificationState;
+}
+
+/** Set the current verification state */
+export function setVerificationState(state: VerificationState | null): void {
+  _verificationState = state;
+}
+
+/** Get all collected resources */
+export function getCollectedResources(): Map<string, CollectedResource> {
+  return _collectedResources;
+}
+
+/** Add a collected resource */
+export function addCollectedResource(resource: CollectedResource): void {
+  _collectedResources.set(resource.path, resource);
+}
+
+/** Clear collected resources */
+export function clearCollectedResources(): void {
+  _collectedResources.clear();
+}
+
+/** Reset all state */
 export function resetState(): void {
   _processedUrls = new Set();
-  _currentManifest = null;
+  _verificationState = null;
+  _collectedResources = new Map();
 }

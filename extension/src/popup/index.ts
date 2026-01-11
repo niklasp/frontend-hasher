@@ -1,16 +1,54 @@
-import type { PageManifest } from "../shared/types";
-import { loadManifest as loadManifestFromStorage } from "../shared/storage";
-import { STORAGE_KEY } from "../shared/constants";
-import { renderManifest, renderError, renderLoading } from "./render";
+import type {
+  VerificationState,
+  FileVerification,
+} from "../verification/types";
+import { loadVerificationState } from "../shared/storage";
+import { getVerificationSummary } from "../verification/verify";
+import {
+  renderVerificationStatus,
+  renderVerificationList,
+  renderLoading,
+} from "./render";
 
-/** Load manifest from storage and render it */
-async function loadAndRenderManifest(): Promise<void> {
+const VERIFICATION_KEY = "verificationState";
+
+/** Deserialize state from storage format */
+function deserializeState(data: unknown): VerificationState | null {
+  if (!data || typeof data !== "object") return null;
+
+  const raw = data as Record<string, unknown>;
+
   try {
-    const manifest = await loadManifestFromStorage();
-    renderManifest(manifest);
+    return {
+      domain: raw.domain as string,
+      rootCid: raw.rootCid as string,
+      expectedFiles: new Map(raw.expectedFiles as [string, string][]),
+      verifiedFiles: new Map(raw.verifiedFiles as [string, FileVerification][]),
+      status: raw.status as VerificationState["status"],
+      error: raw.error as string | undefined,
+      startedAt: raw.startedAt as number,
+      completedAt: raw.completedAt as number | undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Load verification state and render it */
+async function loadAndRenderVerification(): Promise<void> {
+  try {
+    const state = await loadVerificationState();
+    if (state) {
+      const summary = getVerificationSummary(state);
+      renderVerificationStatus(summary);
+      renderVerificationList(state);
+    } else {
+      renderVerificationStatus(null);
+      renderVerificationList(null);
+    }
   } catch (error) {
-    console.error("[Popup] Error loading manifest:", error);
-    renderError("Error loading manifest data.");
+    console.error("[Popup] Error loading verification:", error);
+    renderVerificationStatus(null);
   }
 }
 
@@ -27,8 +65,7 @@ async function sendRebuildMessage(): Promise<boolean> {
       return false;
     }
 
-    // sendMessage returns when the content script calls sendResponse
-    await chrome.tabs.sendMessage(tab.id, { action: "rebuildManifest" });
+    await chrome.tabs.sendMessage(tab.id, { action: "refresh" });
     return true;
   } catch (error) {
     console.warn("[Popup] Could not send refresh message:", error);
@@ -36,35 +73,37 @@ async function sendRebuildMessage(): Promise<boolean> {
   }
 }
 
-/** Refresh the manifest by asking content script to rebuild */
-async function refreshManifest(): Promise<void> {
+/** Refresh verification by asking content script to rebuild */
+async function refreshVerification(): Promise<void> {
   renderLoading();
 
   const success = await sendRebuildMessage();
 
   if (success) {
-    // Content script updates storage, which triggers our listener below
-    // But also load directly in case the listener fires before we're ready
-    await loadAndRenderManifest();
+    await loadAndRenderVerification();
   } else {
-    // Fallback: just reload from storage
-    await loadAndRenderManifest();
+    await loadAndRenderVerification();
   }
 }
 
 // Initialize on DOM ready
 document.addEventListener("DOMContentLoaded", () => {
-  loadAndRenderManifest();
+  loadAndRenderVerification();
 
   const refreshBtn = document.getElementById("refresh-btn");
   if (refreshBtn) {
-    refreshBtn.addEventListener("click", refreshManifest);
+    refreshBtn.addEventListener("click", refreshVerification);
   }
 });
 
 // Listen for storage changes to update in real-time
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && changes[STORAGE_KEY]) {
-    renderManifest(changes[STORAGE_KEY].newValue as PageManifest);
+  if (areaName === "local" && changes[VERIFICATION_KEY]) {
+    const state = deserializeState(changes[VERIFICATION_KEY].newValue);
+    if (state) {
+      const summary = getVerificationSummary(state);
+      renderVerificationStatus(summary);
+      renderVerificationList(state);
+    }
   }
 });

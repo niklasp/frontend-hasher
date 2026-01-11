@@ -1,37 +1,9 @@
-import type { PageManifest } from "../shared/types";
 import { LOG_PREFIX } from "../shared/constants";
-import { storeManifest } from "../shared/storage";
-import { getCurrentManifest, setCurrentManifest } from "./state";
-import { createEmptyManifest } from "./manifest";
+import { storeVerificationState } from "../shared/storage";
+import { getVerificationState, getCollectedResources } from "./state";
 import { recordResource } from "./collectors";
-
-/** Ensure we have a current manifest, creating one if needed */
-function ensureCurrentManifest(): PageManifest {
-  const manifest = getCurrentManifest();
-  if (manifest) return manifest;
-
-  const newManifest = createEmptyManifest();
-  setCurrentManifest(newManifest);
-  return newManifest;
-}
-
-/** Debounce storage updates to avoid excessive writes */
-let storageUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
-let pendingManifest: PageManifest | null = null;
-
-function scheduleStorageUpdate(manifest: PageManifest): void {
-  pendingManifest = manifest;
-
-  if (storageUpdateTimeout) return; // Already scheduled
-
-  storageUpdateTimeout = setTimeout(async () => {
-    storageUpdateTimeout = null;
-    if (pendingManifest) {
-      await storeManifest(pendingManifest);
-      pendingManifest = null;
-    }
-  }, 100); // Batch updates within 100ms
-}
+import { verifyResource } from "../verification/verify";
+import { logVerificationSummary } from "./index";
 
 /** Start observing for newly loaded resources */
 export function startResourceObserver(): void {
@@ -44,19 +16,32 @@ export function startResourceObserver(): void {
     const observer = new PerformanceObserver((list) => {
       const entries = list.getEntries() as PerformanceResourceTiming[];
 
-      // Process entries sequentially to avoid race conditions
       (async () => {
         for (const entry of entries) {
-          const manifest = ensureCurrentManifest();
-          const key = await recordResource(entry.name, "resource", manifest);
-
-          if (key && manifest.entries[key]) {
-            console.log(
-              `${LOG_PREFIX} New resource discovered`,
-              manifest.entries[key],
-            );
-            scheduleStorageUpdate(manifest);
+          const state = getVerificationState();
+          if (
+            !state ||
+            state.status === "not-ens" ||
+            state.status === "failed"
+          ) {
+            continue;
           }
+
+          // Record resource (fetches and stores bytes)
+          const path = await recordResource(entry.name);
+          if (!path) continue;
+
+          // Get the already-fetched resource from state
+          const resource = getCollectedResources().get(path);
+          if (!resource) continue;
+
+          // Verify and update state
+          await verifyResource(state, resource);
+          await storeVerificationState(state);
+
+          // Log updated summary
+          console.log(`${LOG_PREFIX} 🔄 Dynamic resource loaded: ${path}`);
+          logVerificationSummary(state);
         }
       })();
     });

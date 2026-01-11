@@ -1,11 +1,7 @@
-import type { PageManifest } from "../shared/types";
-
-/** Format bytes to human-readable string */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import type {
+  VerificationState,
+  VerificationSummary,
+} from "../verification/types";
 
 /** Escape HTML special characters */
 export function escapeHtml(text: string): string {
@@ -14,78 +10,152 @@ export function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
-/** Get DOM elements */
-function getElements(): { content: HTMLElement; stats: HTMLElement } | null {
-  const content = document.getElementById("content");
-  const stats = document.getElementById("stats");
-  if (!content || !stats) return null;
-  return { content, stats };
+/** Truncate CID for display */
+function truncateCid(cid: string, length = 20): string {
+  if (cid.length <= length * 2) return cid;
+  return `${cid.slice(0, length)}...${cid.slice(-length)}`;
 }
 
-/** Render empty state */
-function renderEmptyState(content: HTMLElement, stats: HTMLElement): void {
-  content.innerHTML = `
-    <div class="no-data">
-      No manifest data available.<br />
-      Navigate to a page and wait for resources to load.
+/** Get status badge HTML */
+function getStatusBadge(status: VerificationSummary["status"]): string {
+  const badges: Record<string, { class: string; icon: string; text: string }> =
+    {
+      verified: { class: "verified", icon: "✅", text: "Verified" },
+      partial: { class: "partial", icon: "⏳", text: "Partial" },
+      failed: { class: "failed", icon: "❌", text: "Failed" },
+      loading: { class: "loading", icon: "⏳", text: "Loading..." },
+      pending: { class: "loading", icon: "⏳", text: "Pending..." },
+      "not-ens": { class: "not-ens", icon: "ℹ️", text: "Not ENS" },
+    };
+
+  const badge = badges[status] || badges.loading;
+  return `
+    <div class="verification-badge ${badge.class}">
+      <span>${badge.icon}</span> ${badge.text}
     </div>
   `;
-  stats.textContent = "No data";
 }
 
-/** Render error state */
-export function renderError(message: string): void {
-  const els = getElements();
-  if (!els) return;
-  els.content.innerHTML = `<div class="no-data">${escapeHtml(message)}</div>`;
-  els.stats.textContent = "Error";
-}
+/** Render verification status section */
+export function renderVerificationStatus(
+  summary: VerificationSummary | null
+): void {
+  const container = document.getElementById("verification-status");
+  if (!container) return;
 
-/** Render loading state */
-export function renderLoading(): void {
-  const els = getElements();
-  if (!els) return;
-  els.stats.textContent = "Refreshing...";
-}
-
-/** Render the manifest data */
-export function renderManifest(manifest: PageManifest | null): void {
-  const els = getElements();
-  if (!els) return;
-
-  if (!manifest || Object.keys(manifest.entries).length === 0) {
-    renderEmptyState(els.content, els.stats);
+  if (!summary) {
+    container.innerHTML = `
+      <div class="verification-badge loading">
+        <span>⏳</span> Checking...
+      </div>
+    `;
     return;
   }
 
-  const entries = Object.entries(manifest.entries);
-  const totalSize = entries.reduce(
-    (sum, [, entry]) => sum + entry.sizeBytes,
-    0,
-  );
+  const badge = getStatusBadge(summary.status);
+  const statsHtml =
+    summary.status !== "not-ens"
+      ? `
+    <div class="verification-stats">
+      <div class="stat verified">✅ ${summary.verifiedFiles} verified</div>
+      <div class="stat failed">❌ ${summary.failedFiles} failed</div>
+      <div class="stat pending">⏳ ${summary.totalFiles - summary.loadedFiles} pending</div>
+    </div>
+  `
+      : "";
 
-  els.stats.innerHTML = `
-    <strong>${entries.length}</strong> files detected · 
-    <strong>${formatBytes(totalSize)}</strong> total · 
-    ${new Date(manifest.createdAt).toLocaleTimeString()}
+  const errorHtml = summary.error
+    ? `
+    <div class="verification-info" style="color: #fca5a5; margin-top: 8px;">
+      ${escapeHtml(summary.error)}
+    </div>
+  `
+    : "";
+
+  container.innerHTML = `
+    ${badge}
+    <div class="verification-info">
+      <span class="domain">${escapeHtml(summary.domain)}</span>
+      ${summary.rootCid ? `<div class="cid">CID: ${truncateCid(summary.rootCid)}</div>` : ""}
+    </div>
+    ${statsHtml}
+    ${errorHtml}
   `;
+}
 
-  const listHtml = entries
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([path, entry]) => {
+/** Render verification file list */
+export function renderVerificationList(state: VerificationState | null): void {
+  const container = document.getElementById("verification-content");
+  if (!container) return;
+
+  if (!state || state.status === "not-ens") {
+    container.innerHTML = `
+      <div class="no-data">
+        No ENS verification available for this domain.<br />
+        ${state?.error ? escapeHtml(state.error) : "Domain may not have contenthash set."}
+      </div>
+    `;
+    return;
+  }
+
+  if (state.expectedFiles.size === 0) {
+    container.innerHTML = `
+      <div class="no-data">
+        No files found in IPFS directory.
+      </div>
+    `;
+    return;
+  }
+
+  // Sort files by path
+  const allPaths = Array.from(state.expectedFiles.keys()).sort();
+
+  const listHtml = allPaths
+    .map((path) => {
+      const verification = state.verifiedFiles.get(path);
+      const expectedCid = state.expectedFiles.get(path) || "";
+
+      let statusClass = "pending";
+      let statusIcon = "⏳";
+      let statusText = "Not loaded";
+
+      if (verification?.loaded) {
+        if (verification.verified) {
+          statusClass = "verified";
+          statusIcon = "✅";
+          statusText = "Verified";
+        } else {
+          statusClass = "failed";
+          statusIcon = "❌";
+          statusText = "CID mismatch";
+        }
+      }
+
       return `
-        <div class="file-item">
-          <div class="file-path">${escapeHtml(path)}</div>
-          <div class="file-hash">${entry.hashSha256}</div>
+        <div class="file-item ${statusClass}">
+          <div class="file-path">
+            <span class="status-icon">${statusIcon}</span>
+            ${escapeHtml(path)}
+          </div>
+          <div class="file-hash">${truncateCid(expectedCid)}</div>
           <div class="file-meta">
-            <span class="kind ${entry.kind}">${entry.kind}</span>
-            <span>${formatBytes(entry.sizeBytes)}</span>
-            <span>${entry.contentType || "unknown"}</span>
+            <span>${statusText}</span>
           </div>
         </div>
       `;
     })
     .join("");
 
-  els.content.innerHTML = `<div class="file-list">${listHtml}</div>`;
+  container.innerHTML = `<div class="file-list">${listHtml}</div>`;
+}
+
+/** Render loading state */
+export function renderLoading(): void {
+  const container = document.getElementById("verification-status");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="verification-badge loading">
+      <span>⏳</span> Refreshing...
+    </div>
+  `;
 }

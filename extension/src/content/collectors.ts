@@ -1,60 +1,44 @@
-import type {
-  ManifestEntry,
-  ManifestEntryKind,
-  PageManifest,
-} from "../shared/types";
+import type { CollectedResource } from "../verification/types";
 import { LOG_PREFIX } from "../shared/constants";
-import { fetchAndHash, toAbsoluteUrl, computeManifestKey } from "./hash";
-import { isUrlProcessed, markUrlProcessed } from "./state";
+import { fetchWithBytes, toAbsoluteUrl, computeManifestKey } from "./hash";
+import {
+  isUrlProcessed,
+  markUrlProcessed,
+  addCollectedResource,
+} from "./state";
 
-/** Record a resource in the manifest (handles deduplication) */
-async function recordResource(
-  url: string,
-  kind: ManifestEntryKind,
-  manifest: PageManifest,
-  keyOverride?: string,
-): Promise<string | null> {
+/** Record a resource for verification (handles deduplication) */
+async function recordResource(url: string): Promise<string | null> {
   if (isUrlProcessed(url)) return null;
   markUrlProcessed(url);
 
-  const result = await fetchAndHash(url);
+  const { key, isSameOrigin } = computeManifestKey(url);
+
+  // Skip cross-origin resources
+  if (!isSameOrigin) return null;
+
+  const result = await fetchWithBytes(url);
   if (!result) return null;
 
-  const { key: computedKey, isSameOrigin } = computeManifestKey(url);
-  const key = keyOverride ?? computedKey;
-  const absoluteUrl = new URL(url, window.location.href).href;
-
-  const entry: ManifestEntry = {
-    url: absoluteUrl,
-    kind,
-    hashSha256: result.hashSha256,
-    sizeBytes: result.sizeBytes,
-    contentType: result.contentType,
-    status: result.status,
-    isSameOrigin,
+  const resource: CollectedResource = {
+    path: key,
+    url: new URL(url, window.location.href).href,
+    bytes: result.bytes,
+    size: result.sizeBytes,
   };
 
-  manifest.entries[key] = entry;
+  addCollectedResource(resource);
   return key;
 }
 
 /** Collect the HTML document itself */
-export async function collectDocumentHtml(
-  manifest: PageManifest,
-): Promise<void> {
+async function collectDocumentHtml(): Promise<void> {
   const url = window.location.href;
-  const pathname = new URL(url).pathname;
-
-  // Normalize root path "/" to "/index.html" for clarity
-  const key = pathname === "/" || pathname === "" ? "/index.html" : undefined;
-
-  await recordResource(url, "document", manifest, key);
+  await recordResource(url);
 }
 
-/** Collect all assets referenced in the DOM (images, icons, scripts, stylesheets, media) */
-export async function collectDomReferencedAssets(
-  manifest: PageManifest,
-): Promise<void> {
+/** Collect all assets referenced in the DOM */
+async function collectDomReferencedAssets(): Promise<void> {
   const urls: Set<string> = new Set();
 
   // Favicon and icons
@@ -104,44 +88,35 @@ export async function collectDomReferencedAssets(
   });
 
   // Process all URLs in parallel
-  await Promise.all(
-    Array.from(urls).map((url) => recordResource(url, "dom-asset", manifest)),
-  );
+  await Promise.all(Array.from(urls).map((url) => recordResource(url)));
 }
 
 /** Collect all resources loaded by the page via Resource Timing API */
-export async function collectLoadedResources(
-  manifest: PageManifest,
-): Promise<void> {
+async function collectLoadedResources(): Promise<void> {
   if (typeof performance?.getEntriesByType !== "function") {
     console.warn(
-      `${LOG_PREFIX} Resource Timing API not supported in this browser.`,
+      `${LOG_PREFIX} Resource Timing API not supported in this browser.`
     );
     return;
   }
 
   const resources = performance.getEntriesByType(
-    "resource",
+    "resource"
   ) as PerformanceResourceTiming[];
 
   console.log(
-    `${LOG_PREFIX} Found ${resources.length} loaded resource entries.`,
+    `${LOG_PREFIX} Found ${resources.length} loaded resource entries.`
   );
 
   // Process all resources in parallel
-  await Promise.all(
-    resources.map((entry) => recordResource(entry.name, "resource", manifest)),
-  );
+  await Promise.all(resources.map((entry) => recordResource(entry.name)));
 }
 
 /** Collect all resources from the page */
-export async function collectResources(
-  manifest: PageManifest,
-): Promise<PageManifest> {
-  await collectDocumentHtml(manifest);
-  await collectDomReferencedAssets(manifest);
-  await collectLoadedResources(manifest);
-  return manifest;
+export async function collectResources(): Promise<void> {
+  await collectDocumentHtml();
+  await collectDomReferencedAssets();
+  await collectLoadedResources();
 }
 
 /** Record a single resource (exported for use by observer) */

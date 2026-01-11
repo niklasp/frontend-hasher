@@ -1,52 +1,73 @@
-# Page Resource Hash Logger
+# Frontend Verification
 
-Chrome extension (Manifest V3) that builds a **tamper-detection manifest** of all loaded page resources with SHA-256 hashes.
+A Chrome extension that verifies decentralized app frontends against ENS
+contenthash using IPFS CID verification.
 
-## Build
+## Overview
+
+This project enables trustless verification of web application frontends by:
+
+1. **Resolving ENS contenthash** to get the expected IPFS root CID
+2. **Fetching and verifying IPFS DAG** to build a map of expected file CIDs
+3. **Computing CIDs for loaded resources** and comparing against expected values
+4. **Displaying verification status** to users
+
+## Project Structure
+
+```
+.
+├── extension/          # Chrome extension (verification logic)
+│   ├── src/
+│   │   ├── content/    # Content script (resource collection + verification)
+│   │   ├── popup/      # Extension popup UI
+│   │   ├── shared/     # Types, constants, storage
+│   │   └── verification/ # ENS, IPFS DAG, CID computation
+│   └── dist/           # Built extension
+│
+└── demo-page/          # Vite + React demo for testing
+    └── src/
+```
+
+## Quick Start
+
+### Build Extension
 
 ```bash
+cd extension
 pnpm install
 pnpm run build
 ```
 
-Output goes to `dist/` (manifest.json, content.js, popup.js, popup.html).
-
-## Load in Chrome
+### Load in Chrome
 
 1. Go to `chrome://extensions/`
-2. Enable **Developer mode** (top-right)
-3. Click **Load unpacked** → select the `dist/` folder
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select `extension/dist/`
+
+### Test
+
+1. Navigate to https://peter.blue (ENS domain with IPFS contenthash)
+2. Click extension icon → see verification status
+3. Check DevTools Console for `[Frontend Verification]` and `[IPFS]` logs
 
 ## Demo Page
 
-A Vite + React demo page is included in `../demo-page/` with edge cases for resource detection.
+A demo page is included for local testing:
 
 ```bash
 cd demo-page
 pnpm install
-pnpm dev      # Dev server at http://localhost:5173
-pnpm build    # Production build
-pnpm preview  # Preview production build
+pnpm dev
 ```
 
-## Test
+## Trust Model
 
-1. Open any website (e.g. demo page)
-2. Click the extension icon → see the resource manifest
-3. Open DevTools Console → see `[HashLogger]` logs
+| Component         | Trust Level  | Notes                            |
+| ----------------- | ------------ | -------------------------------- |
+| ENS Resolution    | ⚠️ Trusted   | Uses RPC; light client TODO      |
+| IPFS Gateways     | ✅ Trustless | Every block verified against CID |
+| File Verification | ✅ Trustless | CIDs computed locally            |
 
-## Dev Commands
+## See Also
 
-| Command              | Description                   |
-| -------------------- | ----------------------------- |
-| `pnpm run build`     | Build content + popup scripts |
-| `pnpm run typecheck` | Run TypeScript type checking  |
-
-## Structure
-
-```
-src/
-├── shared/      # Types, constants, storage helpers
-├── content/     # Content script (resource collection)
-└── popup/       # Extension popup UI
-```
+- [Extension README](./extension/README.md) for detailed documentation

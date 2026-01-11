@@ -53,7 +53,8 @@ export async function initVerification(
     const entries = await fetchDirectoryDAG(state.rootCid);
     state.expectedFiles = buildFileMap(entries);
 
-    state.status = "partial";
+    // Ready to verify - status will update as files are checked
+    state.status = "loading";
     return state;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -137,18 +138,22 @@ function updateStatus(state: VerificationState): void {
   const verifiedCount = verified.filter((f) => f.verified).length;
   const failedCount = verified.filter((f) => f.loaded && !f.verified).length;
 
+  // Any failure = failed status
   if (failedCount > 0) {
     state.status = "failed";
-  } else if (
-    loadedCount === state.expectedFiles.size &&
-    verifiedCount === loadedCount
-  ) {
+  } else if (loadedCount > 0 && verifiedCount === loadedCount) {
+    // All LOADED files verified = verified (unloaded files don't affect status)
     state.status = "verified";
-    state.completedAt = Date.now();
-  } else if (verifiedCount > 0) {
-    state.status = "partial";
-  } else {
+    // Mark completed only when ALL files are loaded
+    if (loadedCount === state.expectedFiles.size) {
+      state.completedAt = Date.now();
+    }
+  } else if (loadedCount === 0) {
+    // Nothing loaded yet
     state.status = "loading";
+  } else {
+    // Fallback (shouldn't happen normally)
+    state.status = "verified";
   }
 }
 

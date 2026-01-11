@@ -19,21 +19,20 @@ import type { VerificationState } from "../verification/types";
 /** Log verification summary with emojis */
 export function logVerificationSummary(state: VerificationState): void {
   const summary = getVerificationSummary(state);
+  const unloadedCount = summary.totalFiles - summary.loadedFiles;
 
   const statusEmoji =
     summary.status === "verified"
       ? "✅"
-      : summary.status === "partial"
-        ? "⏳"
-        : summary.status === "failed"
-          ? "❌"
-          : "ℹ️";
+      : summary.status === "failed"
+        ? "❌"
+        : "ℹ️";
 
   console.log(
     `${LOG_PREFIX} ${statusEmoji} Status: ${summary.status.toUpperCase()}`
   );
   console.log(
-    `${LOG_PREFIX}    ✅ ${summary.verifiedFiles} verified | ❌ ${summary.failedFiles} failed | ⏳ ${summary.totalFiles - summary.loadedFiles} pending`
+    `${LOG_PREFIX}    ✅ ${summary.verifiedFiles} verified | ❌ ${summary.failedFiles} failed | 📁 ${summary.totalFiles} in deployment${unloadedCount > 0 ? ` (${unloadedCount} not loaded)` : ""}`
   );
 }
 

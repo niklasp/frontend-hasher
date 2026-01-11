@@ -1,11 +1,5 @@
 /** Verification status for the entire page */
-export type VerificationStatus =
-  | "pending"
-  | "loading"
-  | "verified"
-  | "partial"
-  | "failed"
-  | "not-ens";
+export type VerificationStatus = "loading" | "verified" | "failed" | "not-ens";
 
 /** Result of ENS resolution */
 export interface ENSResult {

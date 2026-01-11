@@ -113,3 +113,5 @@ src/
 - [ ] Light client for ENS (replace RPC trust)
 - [ ] P2P IPFS retrieval (replace gateway trust for transport)
 - [ ] Signature verification (deployer attestation)
+- [ ] If a provider does not support DNSSEC we can find several workarounds
+  (e.g. Cloudflare or eth.limo)

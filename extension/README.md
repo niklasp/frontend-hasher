@@ -115,3 +115,4 @@ src/
 - [ ] Signature verification (deployer attestation)
 - [ ] If a provider does not support DNSSEC we can find several workarounds
   (e.g. Cloudflare or eth.limo)
+- [ ] Think about UX improvements in e.g. showing the deployment timestamp

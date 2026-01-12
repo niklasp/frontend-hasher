@@ -109,6 +109,33 @@ async function traverseDirectory(
     const childPath = basePath ? `${basePath}/${link.Name}` : `/${link.Name}`;
     const childCid = link.Hash.toString();
 
+    // Parse CID to check codec before fetching
+    let parsedCid: CID;
+    try {
+      parsedCid = CID.parse(childCid);
+    } catch (error) {
+      console.warn(`${LOG_PREFIX} Invalid CID for ${childPath}:`, childCid);
+      entries.push({
+        path: childPath,
+        cid: childCid,
+        size: link.Tsize || 0,
+        isDirectory: false,
+      });
+      continue;
+    }
+
+    // Codec 0x55 = raw (definitely a file, skip fetch)
+    if (parsedCid.code === 0x55) {
+      entries.push({
+        path: childPath,
+        cid: childCid,
+        size: link.Tsize || 0,
+        isDirectory: false,
+      });
+      continue;
+    }
+
+    // dag-pb or other codec - fetch to check if directory
     try {
       const childBytes = await fetchAndVerifyBlock(childCid);
 
